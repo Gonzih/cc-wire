@@ -1,0 +1,42 @@
+{
+  "name": "@gonzih/cc-wire",
+  "version": "0.1.0",
+  "description": "Single source of truth for Redis channel names, key patterns, and message shapes across the cc-suite (cc-tg, cc-agent, cc-agent-ui)",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gonzih/cc-wire.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "types": "./dist/esm/index.d.ts"
+    }
+  },
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc -p tsconfig.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/fix-cjs.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  },
+  "keywords": [
+    "redis",
+    "cc-agent",
+    "cc-tg",
+    "cc-suite",
+    "channels"
+  ],
+  "license": "MIT"
+}
