@@ -31,6 +31,12 @@ export const TOKEN_INDEX_KEY = "cca:token:index";
 /** STRING — running cc-agent npm version. */
 export const CC_AGENT_VERSION_KEY = "cca:meta:cc-agent:version";
 
+/** Glob pattern for Redis KEYS scan — matches all job index sets. */
+export const JOB_INDEX_GLOB = "cca:jobs:*";
+
+/** Key prefix stripped when extracting namespace from a job index key. */
+export const JOB_INDEX_PREFIX = "cca:jobs:";
+
 /** STRING — running cc-tg npm version. */
 export const CC_TG_VERSION_KEY = "cca:meta:cc-tg:version";
 
@@ -142,6 +148,10 @@ export const learningsKey = (namespace: string): string =>
 /** STRING (JSON array) — cron job definitions for a namespace. */
 export const cronsKey = (namespace: string): string =>
   `cca:crons:${namespace}`;
+
+/** SET — tombstone set of deleted cron IDs for a namespace, TTL 7 days. */
+export const deletedCronsKey = (namespace: string): string =>
+  `cca:deleted-crons:${namespace}`;
 
 // ─── Swarm Keys (dynamic) ─────────────────────────────────────────────────────
 
