@@ -107,6 +107,17 @@ export const profileKey = (name: string): string =>
 export const notifyChannel = (namespace: string): string =>
   `cca:notify:${namespace}`;
 
+/**
+ * LIST — notification delivery queue (RPUSH by cc-agent, RPOP by cc-tg).
+ *
+ * Same Redis key as `notifyChannel`; pub/sub channels and list keys occupy
+ * separate namespaces in Redis so the dual use is safe. cc-tg polls this
+ * list every 5 s via RPOP to catch notifications that arrived while the
+ * subscriber was disconnected.
+ */
+export const notifyListKey = (namespace: string): string =>
+  `cca:notify:${namespace}`;
+
 /** LIST — notification log (LPUSH capped at 100, LIFO). */
 export const notifyLogKey = (namespace: string): string =>
   `cca:notify-log:${namespace}`;
