@@ -26,9 +26,12 @@
   "scripts": {
     "build": "npm run build:esm && npm run build:cjs",
     "build:esm": "tsc -p tsconfig.json",
-    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/fix-cjs.mjs"
+    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/fix-cjs.mjs",
+    "test": "node --import tsx/esm --test src/channels.test.ts"
   },
   "devDependencies": {
+    "@types/node": "22.15.21",
+    "tsx": "4.19.3",
     "typescript": "5.8.3"
   },
   "keywords": [

@@ -164,6 +164,19 @@ export const cronsKey = (namespace: string): string =>
 export const deletedCronsKey = (namespace: string): string =>
   `cca:deleted-crons:${namespace}`;
 
+// ─── Wiki Keys (dynamic) ──────────────────────────────────────────────────────
+
+/**
+ * HASH — per-repo wiki pages.
+ * field = page name, value = markdown string.
+ */
+export const wikiKey = (repoSlug: string) =>
+  `cca:wiki:${repoSlug}` as const;
+
+/** STRING — ISO timestamp of last update for a repo's wiki. */
+export const wikiUpdatedKey = (repoSlug: string) =>
+  `cca:wiki:${repoSlug}:updated` as const;
+
 // ─── Swarm Keys (dynamic) ─────────────────────────────────────────────────────
 
 /** STRING (JSON) — SwarmRecord for a given swarm ID. */
