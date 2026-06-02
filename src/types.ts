@@ -9,6 +9,14 @@
  * and docs/redis-protocol.md (both repos).
  */
 
+// ─── Effort Level ─────────────────────────────────────────────────────────────
+
+/**
+ * Controls agent effort / token budget for a job.
+ * Matches the effort_level field accepted by cc-agent's spawn API.
+ */
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max" | "auto";
+
 // ─── Job Status ───────────────────────────────────────────────────────────────
 
 export type JobStatus =
@@ -72,6 +80,8 @@ export interface JobRecord {
   timeoutMinutes?: number;
   timedOut?: boolean;
   failReason?: string;
+  effort_level?: EffortLevel;
+  fast_mode?: boolean;
 }
 
 // ─── Job Signal (cca:job:{id}:signal) ────────────────────────────────────────
@@ -118,6 +128,8 @@ export interface CoordinatorPlan {
   next_step?: {
     repo_url: string;
     task: string;
+    effort_level?: EffortLevel;
+    fast_mode?: boolean;
   };
   summary?: string;
 }
@@ -210,7 +222,32 @@ export interface Profile {
   createdAt: string;            // ISO 8601
 }
 
+// ─── Spawn Params ─────────────────────────────────────────────────────────────
+
+/**
+ * Parameters passed when spawning a new job (cc-agent spawn RPC, coordinator
+ * next_step, plan steps). All scheduling-specific fields are optional.
+ */
+export interface SpawnParams {
+  repoUrl: string;
+  task: string;
+  branch?: string;
+  createBranch?: string;
+  dependsOn?: string[];
+  effort_level?: EffortLevel;
+  fast_mode?: boolean;
+}
+
 // ─── Plan Record (cca:plan:{id}) ──────────────────────────────────────────────
+
+/** A single step inside a PlanRecord. */
+export interface PlanStep {
+  stepId: string;
+  jobId: string;
+  status: string;
+  effort_level?: EffortLevel;
+  fast_mode?: boolean;
+}
 
 /**
  * Multi-step plan record stored in `cca:plan:{id}`.
@@ -219,11 +256,7 @@ export interface Profile {
 export interface PlanRecord {
   id: string;
   goal: string;
-  steps: Array<{
-    stepId: string;
-    jobId: string;
-    status: string;
-  }>;
+  steps: PlanStep[];
   createdAt: string;            // ISO 8601
 }
 
