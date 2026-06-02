@@ -1,14 +1,12 @@
-# TODO: @gonzih/cc-wire
+# TODO: effort_level and fast_mode fields
 
-- [x] Audit cc-tg, cc-agent, cc-agent-ui source for all Redis keys/channels
-- [x] Write PLAN.md
-- [ ] Create package.json
-- [ ] Create tsconfig.json + tsconfig.cjs.json
-- [ ] Implement src/channels.ts
-- [ ] Implement src/types.ts
-- [ ] Implement src/index.ts
-- [ ] npm install && npm run build (verify clean compile)
-- [ ] git checkout -b feat/init
-- [ ] git commit + git push
-- [ ] gh pr create + gh pr merge
-- [ ] npm publish --access public
+- [ ] Add EffortLevel union type to src/types.ts
+- [ ] Add effort_level and fast_mode to JobRecord
+- [ ] Add SpawnParams interface
+- [ ] Extract PlanStep interface from PlanRecord inline type and add fields
+- [ ] Update CoordinatorPlan.next_step to include effort_level and fast_mode
+- [ ] npm run build (verify clean compile)
+- [ ] git checkout -b feat/effort-fast-types
+- [ ] git add + git diff --staged + git commit
+- [ ] git push + gh pr create + gh pr merge
+- [ ] npm version patch + npm publish
