@@ -247,7 +247,7 @@ export interface Profile {
  *
  * Callers that need notifications routed back to themselves MUST set this.
  * cc-tg injects it client-side; cc-agent meta-agent context should inject it
- * server-side (see gonzih/cc-agent#<issue>).
+ * server-side (see gonzih/cc-agent#134).
  */
 export interface SpawnParams {
   repoUrl: string;
