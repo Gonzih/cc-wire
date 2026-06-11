@@ -1,12 +1,14 @@
-# TODO: effort_level and fast_mode fields
+# TODO: NotificationPayload type and routing field
 
-- [ ] Add EffortLevel union type to src/types.ts
-- [ ] Add effort_level and fast_mode to JobRecord
-- [ ] Add SpawnParams interface
-- [ ] Extract PlanStep interface from PlanRecord inline type and add fields
-- [ ] Update CoordinatorPlan.next_step to include effort_level and fast_mode
-- [ ] npm run build (verify clean compile)
-- [ ] git checkout -b feat/effort-fast-types
-- [ ] git add + git diff --staged + git commit
-- [ ] git push + gh pr create + gh pr merge
-- [ ] npm version patch + npm publish
+- [ ] Add `Transport` type to `src/types.ts`
+- [ ] Add `routing?: Transport[]` to `NotificationPayload` in `src/types.ts`
+- [ ] Add `notifyPublishCommand` builder to `src/channels.ts`
+- [ ] Add tests for `notifyPublishCommand` in `src/channels.test.ts`
+- [ ] Update README with new types and builder usage
+- [ ] `git checkout -b feat/notification-payload-type`
+- [ ] `npm run build` — verify build passes
+- [ ] `npm test` — verify all tests pass
+- [ ] `git add -A && git diff --staged` — verify changes
+- [ ] `git commit`
+- [ ] `npm version patch && npm publish --access public`
+- [ ] `gh pr create` + `gh pr merge --squash --auto`
