@@ -18,11 +18,14 @@ import {
   wikiUpdatedKey,
   notifyChannel,
   notifyListKey,
+  notifyPublishCommand,
   jobKey,
   jobIndexKey,
   chatLogKey,
   TTL,
   CAP,
+  type Transport,
+  type NotificationPayload,
 } from "@gonzih/cc-wire";
 
 // Wiki keys
@@ -36,6 +39,16 @@ const idx  = jobIndexKey("myns");         // "cca:jobs:myns"
 // Notify
 const chan = notifyChannel("myns");       // "cca:notify:myns"
 const list = notifyListKey("myns");       // "cca:notify:myns" (same key, dual-purpose)
+
+// NotificationPayload — routing controls which transports deliver the message
+const payload: NotificationPayload = {
+  text: "Build finished ✓",
+  routing: ["discord"],       // omit or leave empty for all transports
+};
+
+// notifyPublishCommand — generate a redis-cli shell command
+const cmd = notifyPublishCommand("myns", payload);
+// => "redis-cli PUBLISH 'cca:notify:myns' '{\"text\":\"Build finished ✓\",\"routing\":[\"discord\"]}'"
 
 // Constants
 TTL.JOB_SECONDS   // 604800
@@ -78,6 +91,7 @@ CAP.CHAT_LOG      // 500
 | `notifyChannel(ns)` | `cca:notify:{ns}` | CHANNEL — coordinator publishes job completion. |
 | `notifyListKey(ns)` | `cca:notify:{ns}` | LIST — delivery queue (RPUSH/RPOP). Same key as channel (safe — Redis pub/sub and list namespaces are independent). |
 | `notifyLogKey(ns)` | `cca:notify-log:{ns}` | LIST — persistent audit log, capped at `CAP.NOTIFY_LOG` (100). |
+| `notifyPublishCommand(ns, payload)` | — | Returns a `redis-cli PUBLISH` shell command string. Useful for cron prompts. |
 | `chatLogKey(ns)` | `cca:chat:log:{ns}` | LIST — chat history, capped at `CAP.CHAT_LOG` (500), LIFO. |
 | `chatIncomingChannel(ns)` | `cca:chat:incoming:{ns}` | CHANNEL — UI → cc-tg. |
 | `chatOutgoingChannel(ns)` | `cca:chat:outgoing:{ns}` | CHANNEL — cc-tg → UI. |

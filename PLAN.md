@@ -1,24 +1,36 @@
-# PLAN — effort_level and fast_mode in cc-wire types
+# PLAN — NotificationPayload type and routing field
 
 ## Task restatement
-Add optional `effort_level` and `fast_mode` fields to the relevant TypeScript interfaces in
-`src/types.ts` so that cc-agent (writer) and cc-agent-ui (reader) share a single type source.
+Add a `Transport` type, extend `NotificationPayload` with `routing?: Transport[]`,
+add a `notifyPublishCommand` builder, tests, and update the README.
 
 ## Approach
-Single approach — direct, non-breaking type additions. All new fields are optional (`?`).
+Single, non-breaking additions:
 
-Changes to `src/types.ts`:
-1. Export a named `EffortLevel` union type (avoids repeating the literal union in every interface).
-2. Add `effort_level?: EffortLevel` and `fast_mode?: boolean` to `JobRecord`.
-3. Add `SpawnParams` interface — the parameter bag used when creating a job (used by cc-agent's
-   spawn RPC and coordinator's next_step). Includes `effort_level` and `fast_mode`.
-4. Extract the inline plan-step shape to a named `PlanStep` interface, add the two fields, and
-   update `PlanRecord.steps` to use `PlanStep[]`.
-5. Update `CoordinatorPlan.next_step` inline type to include `effort_level` and `fast_mode`
-   (coordinator inherits the spawn parameters it passes to the next job).
+1. `src/types.ts`
+   - Add `export type Transport = "discord" | "telegram"`
+   - Add `routing?: Transport[]` to the existing `NotificationPayload` interface
+
+2. `src/channels.ts`
+   - Add `notifyPublishCommand(ns, payload): string` builder that returns a
+     `redis-cli PUBLISH <channel> <json>` shell command string
+
+3. `src/channels.test.ts`
+   - Add tests for `notifyPublishCommand` output shape
+
+4. `README.md`
+   - Add `Transport` and `NotificationPayload` type examples
+   - Add `notifyPublishCommand` to the Notify/Chat table and a usage snippet
 
 ## Files touched
-- `src/types.ts` — add type / interfaces
+- `src/types.ts`
+- `src/channels.ts`
+- `src/channels.test.ts`
+- `README.md`
+- `package.json` (version bump via `npm version patch`)
 
 ## Risks / unknowns
-- None — all fields are optional, no breaking changes.
+- `notifyPublishCommand` must shell-escape the JSON value. Using single-quotes
+  around the JSON and replacing any single-quotes inside the JSON with `'\''`
+  is the portable approach for redis-cli invocations.
+- All changes are additive / optional fields — no breaking changes.

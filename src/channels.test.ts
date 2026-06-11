@@ -7,6 +7,7 @@ import {
   notifyChannel,
   notifyListKey,
   notifyLogKey,
+  notifyPublishCommand,
   jobKey,
   jobIndexKey,
   chatLogKey,
@@ -73,6 +74,37 @@ describe("misc keys", () => {
     assert.equal(profileKey("default"), "cca:profile:default"));
   it("learningsKey", () =>
     assert.equal(learningsKey("ns"), "cca:learnings:ns"));
+});
+
+describe("notifyPublishCommand", () => {
+  it("produces a redis-cli PUBLISH command", () => {
+    const cmd = notifyPublishCommand("myns", { text: "hello" });
+    assert.ok(cmd.startsWith("redis-cli PUBLISH"), "starts with redis-cli PUBLISH");
+    assert.ok(cmd.includes("cca:notify:myns"), "contains channel");
+    assert.ok(cmd.includes('"text":"hello"'), "contains JSON payload");
+  });
+
+  it("includes routing field when present", () => {
+    const cmd = notifyPublishCommand("myns", {
+      text: "hi",
+      routing: ["discord"],
+    });
+    assert.ok(cmd.includes('"routing":["discord"]'), "routing present in JSON");
+  });
+
+  it("includes chat_id when present", () => {
+    const cmd = notifyPublishCommand("myns", {
+      text: "hi",
+      chat_id: 12345,
+    });
+    assert.ok(cmd.includes('"chat_id":12345'), "chat_id present in JSON");
+  });
+
+  it("escapes single quotes in payload text", () => {
+    const cmd = notifyPublishCommand("myns", { text: "it's fine" });
+    assert.ok(!cmd.includes("it's fine"), "raw single-quote not present");
+    assert.ok(cmd.includes("it"), "text content still present");
+  });
 });
 
 describe("TTL and CAP constants are positive integers", () => {

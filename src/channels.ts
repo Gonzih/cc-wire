@@ -11,6 +11,8 @@
  * All values match the exact strings used in the source repos as of 2026-05.
  */
 
+import type { NotificationPayload } from "./types.js";
+
 // ─── Static Keys ─────────────────────────────────────────────────────────────
 
 /** Redis Stream written by cc-agent on every job status change. */
@@ -121,6 +123,22 @@ export const notifyListKey = (namespace: string): string =>
 /** LIST — notification log (LPUSH capped at 100, LIFO). */
 export const notifyLogKey = (namespace: string): string =>
   `cca:notify-log:${namespace}`;
+
+/**
+ * Returns a `redis-cli PUBLISH` shell command string for the given namespace
+ * and payload. Useful for cron prompts that need to emit shell commands.
+ *
+ * Example output:
+ *   redis-cli PUBLISH 'cca:notify:myns' '{"text":"hello","routing":["discord"]}'
+ */
+export const notifyPublishCommand = (
+  namespace: string,
+  payload: NotificationPayload
+): string => {
+  const channel = notifyChannel(namespace);
+  const json = JSON.stringify(payload).replace(/'/g, "'\\''");
+  return `redis-cli PUBLISH '${channel}' '${json}'`;
+};
 
 /** LIST — chat history (LPUSH capped at 500, LIFO — newest at index 0). */
 export const chatLogKey = (namespace: string): string =>

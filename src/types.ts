@@ -137,11 +137,24 @@ export interface CoordinatorPlan {
 // ─── Notification Payload (cca:notify:{namespace}) ───────────────────────────
 
 /**
+ * Delivery transports for a notification.
+ * absent/empty routing = all transports.
+ */
+export type Transport = "discord" | "telegram";
+
+/**
  * JSON payload published to `cca:notify:{namespace}` and LPUSH'd to
  * `cca:notify-log:{namespace}`.
+ *
+ * `routing` controls which transports deliver the message:
+ *   - absent or empty  → all transports
+ *   - ["discord"]      → Discord only
+ *   - ["telegram"]     → Telegram only
  */
 export interface NotificationPayload {
   text: string;
+  chat_id?: number;
+  routing?: Transport[];
   driver?: string;
   model?: string;
   cost?: number;
