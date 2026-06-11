@@ -240,6 +240,14 @@ export interface Profile {
 /**
  * Parameters passed when spawning a new job (cc-agent spawn RPC, coordinator
  * next_step, plan steps). All scheduling-specific fields are optional.
+ *
+ * `spawning_namespace` controls where job-completion notifications are routed:
+ *   - absent → coordinator's own namespace (e.g. "money-brain")
+ *   - present → that namespace's cca:notify:{spawning_namespace} channel
+ *
+ * Callers that need notifications routed back to themselves MUST set this.
+ * cc-tg injects it client-side; cc-agent meta-agent context should inject it
+ * server-side (see gonzih/cc-agent#<issue>).
  */
 export interface SpawnParams {
   repoUrl: string;
@@ -249,6 +257,7 @@ export interface SpawnParams {
   dependsOn?: string[];
   effort_level?: EffortLevel;
   fast_mode?: boolean;
+  spawning_namespace?: string;
 }
 
 // ─── Plan Record (cca:plan:{id}) ──────────────────────────────────────────────

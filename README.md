@@ -180,6 +180,90 @@ TIMING.INPUT_POLL_INTERVAL_MS  // 3000
 TIMING.META_AGENT_FLUSH_DELAY_MS // 1500
 ```
 
+## Notification Routing
+
+Job-completion notifications flow through `cca:notify:{namespace}`. The namespace that
+receives the notification is determined by `spawning_namespace` on the spawn call:
+
+```
+coordinator: targetNamespace = job.spawningNamespace ?? coordinator.namespace
+```
+
+If `spawning_namespace` is absent the notification falls back to the coordinator's own
+namespace (typically `"money-brain"`), which is the source of the routing bug described
+below.
+
+### Broken flow — Discord jobs notify Telegram instead of Discord
+
+```
+Discord #simorgh-mobile-app
+    → cc-discord routeToMetaAgent("simorgh-mobile-app")
+        → RPUSH cca:meta:simorgh-mobile-app:input
+            → cc-agent meta-agent picks up message
+                → spawn_agent { repoUrl, task }       ← no spawning_namespace
+                    → Coordinator: targetNs = coordinator.namespace = "money-brain"
+                        → PUBLISH cca:notify:money-brain
+                            → cc-tg (subscribed to cca:notify:money-brain) → Telegram ✗
+```
+
+Two bugs combine to produce this:
+
+| Bug | Repo | Description |
+|---|---|---|
+| A | `cc-agent` | `spawn_agent` MCP handler does not auto-inject `spawning_namespace` when called from within a meta-agent context. cc-tg works around this by injecting it client-side; meta-agents cannot. |
+| B | `cc-discord` | The notifier subscribes only to `cca:notify:{CC_AGENT_NAMESPACE}` (one hardcoded namespace). Even after Bug A is fixed, cc-discord would not hear notifications on `cca:notify:simorgh-mobile-app`. |
+
+### Correct flow — after both fixes
+
+```
+Discord #simorgh-mobile-app
+    → cc-discord routeToMetaAgent("simorgh-mobile-app")
+        → RPUSH cca:meta:simorgh-mobile-app:input
+            → cc-agent meta-agent picks up message
+                → spawn_agent { repoUrl, task }
+                    ← cc-agent MCP injects spawning_namespace = "simorgh-mobile-app"
+                        → Coordinator: targetNs = "simorgh-mobile-app"
+                            → PUBLISH cca:notify:simorgh-mobile-app
+                                → cc-discord (subscribed to cca:notify:simorgh-mobile-app)
+                                    → Discord #simorgh-mobile-app ✓
+```
+
+### Redis keys involved
+
+| Step | Key / Channel | Builder |
+|---|---|---|
+| Input to meta-agent | `cca:meta:{ns}:input` | `metaInputKey(ns)` |
+| Job completion pub/sub | `cca:notify:{ns}` | `notifyChannel(ns)` |
+| Job completion list (5 s poll fallback) | `cca:notify:{ns}` | `notifyListKey(ns)` |
+| Notification audit log | `cca:notify-log:{ns}` | `notifyLogKey(ns)` |
+
+### Required fixes per repo
+
+**`gonzih/cc-agent`** (Bug A): When the `spawn_agent` MCP tool is called from within a
+running meta-agent context, the MCP handler should auto-inject
+`spawning_namespace: metaAgentNamespace` if the caller has not already set it. The
+meta-agent's namespace is known to cc-agent at the time of the call.
+
+**`gonzih/cc-discord`** (Bug B): The notifier must subscribe to `cca:notify:{ns}` for
+every namespace registered in `routedChannelIds`, and route incoming notifications to
+the corresponding Discord channel — not just the single default
+`DISCORD_NOTIFY_CHANNEL_ID`.
+
+### Setting spawning_namespace on manual spawn calls
+
+Any caller that spawns jobs and wants notifications routed back to itself must set
+`spawning_namespace` on the `SpawnParams`:
+
+```typescript
+import type { SpawnParams } from "@gonzih/cc-wire";
+
+const params: SpawnParams = {
+  repoUrl: "https://github.com/org/repo",
+  task: "fix the build",
+  spawning_namespace: "simorgh-mobile-app",  // notifications routed here
+};
+```
+
 ## Development
 
 ```sh
