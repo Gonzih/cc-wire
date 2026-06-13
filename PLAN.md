@@ -1,80 +1,56 @@
-# PLAN — cc-wire v0.2.0 service ownership redesign
+# PLAN — cc-wire v0.3.0 runtime (`createCcWire`)
 
 ## Task restatement
 
-Redesign cc-wire to reflect a new simplified ownership model:
-- **cc-wire**: owns Redis key definitions and storage contracts (this repo)
-- **cc-discord**: directly owns and manages all namespace Claude sessions (was cc-agent's job)
-- **cc-tg**: has its own dedicated money-brain session, completely isolated
-- **cc-agent**: pure job runner only (`spawn_agent`); meta-agent lifecycle removed from it
-- No state sharing between cc-tg and cc-discord
-
-This is a breaking change → **v0.2.0 minor bump**.
+Turn cc-wire from a pure key-dictionary into a **storage runtime**. Services import
+`createCcWire(redis)` and call typed methods. Raw Redis calls and key builder imports
+become private implementation details.
 
 ## Approach
 
-Single linear approach: augment `channels.ts` with service-scoped builders, deprecate
-old shared keys, update `ChatMessage` type, add workspace constants, update tests, update README,
-bump version, publish, open PR.
+Single factory function `createCcWire(redis: Redis): CcWire` that wraps an ioredis
+`Redis` instance and returns typed namespaced APIs for discord, tg, jobs, and token.
 
-There are no meaningful design alternatives — the task spec is prescriptive about what keys to add
-and what to deprecate.
+Key decisions:
+- `subscribeOutgoing` calls `redis.duplicate()` internally — subscribe mode requires
+  a dedicated connection and callers don't need to manage it.
+- `publishOutgoing` uses a pipeline: PUBLISH + LPUSH log + LTRIM (atomic from the
+  client's perspective; pipeline is not transactional but preserves ordering).
+- All serialization/deserialization is JSON, internal to the runtime.
+- Key builders remain exported (backward compat, `@deprecated` JSDoc).
+- `ioredis` is a peer dependency (services bring their own client).
+- Tests use Vitest with `ioredis-mock` so CI needs no real Redis.
 
 ## Files to touch
 
-- `src/channels.ts` — add discord/tg service-scoped builders, deprecate old meta keys, add constants
-- `src/types.ts` — add `service` field to ChatMessage, add `"discord"` to ChatMessage.source
-- `src/channels.test.ts` — add tests for new builders
-- `README.md` — rewrite for new architecture, new key table, migration notes
-- `package.json` — bump to 0.2.0
+- `src/runtime.ts` — new file: `createCcWire`, `CcWire` interface, private key helpers
+- `src/runtime.test.ts` — new file: Vitest tests with ioredis-mock
+- `src/index.ts` — add `export * from "./runtime.js"`
+- `package.json` — peer dep `ioredis`, dev deps `ioredis-mock` + `vitest`, update test script
+- `vitest.config.ts` — minimal Vitest config (node environment)
+- `README.md` — add createCcWire section, update install instructions
 
-## Changes detail
+## Private key builders inside runtime.ts
 
-### `src/channels.ts`
-
-**Add service-scoped builders:**
 ```
-discordMetaInputKey(ns)   → "cca:discord:meta:{ns}:input"
-discordMetaStatusKey(ns)  → "cca:discord:meta:{ns}:status"
-discordChatOutgoing(ns)   → "cca:discord:chat:outgoing:{ns}"
-discordChatLog(ns)        → "cca:discord:chat:log:{ns}"
-discordChatIncoming(ns)   → "cca:discord:chat:incoming:{ns}"
-discordNotify(ns)         → "cca:discord:notify:{ns}"
-tgChatOutgoing()          → "cca:tg:chat:outgoing"
-tgChatIncoming()          → "cca:tg:chat:incoming"
-tgNotify()                → "cca:tg:notify"
+channelHashKey(channelId)  → cca:discord:channel:{channelId}   HASH (namespace, repoUrl)
+CHANNELS_SET               → cca:discord:channels:index          SET of channelIds
+DISCORD_NOTIFY_LOG(ns)     → cca:discord:notify-log:{ns}         LIST audit log
+TG_NOTIFY_LOG              → cca:tg:notify-log                   LIST audit log
+SPAWN_QUEUE                → cca:spawn:queue                     LIST spawn requests
+MASTER_TOKEN_KEY           → cca:token:master                    STRING
 ```
 
-**Add workspace constants:**
-```
-CC_DISCORD_WORKSPACE_ROOT = "cc-discord-workspace"
-CC_TG_WORKSPACE = "money-brain"
-```
+## discord.notify / pollNotify semantics
 
-**Deprecate (keep exported, mark @deprecated):**
-- `metaInputKey(ns)` → `@deprecated use discordMetaInputKey(ns)`
-- `META_AGENTS_INDEX` → `@deprecated cc-discord maintains its own namespace registry`
-- `metaAgentStatusKey(ns)` → `@deprecated use discordMetaStatusKey(ns)`
-
-### `src/types.ts`
-
-- `ChatMessage.source`: add `"discord"` to union
-- `ChatMessage`: add `service: "cc-discord" | "cc-tg"` field (optional for back-compat with existing data? — keep optional since existing messages won't have it; new messages must set it)
-- `ChatMessage.namespace`: add `namespace: string` (makes source of truth clear for routing)
-
-### `src/channels.test.ts`
-
-- Tests for all new discord/tg builders
-- Tests for workspace constants
-
-### `README.md`
-
-- New architecture overview section with service ownership diagram
-- Full Redis key table with Owner column
-- Migration notes section (old `cca:meta:*` → new `cca:discord:meta:*`)
+- `notify(ns, payload)` → pipeline: PUBLISH `discordNotify(ns)` + RPUSH `discordNotify(ns)` (delivery list)
+- `pollNotify(ns)` → RPOP `discordNotify(ns)`
+  (Same dual-purpose pattern as existing notifyChannel/notifyListKey)
 
 ## Risks
 
-- `ChatMessage.service` is additive but `source` union type change (`"discord"` addition) is also additive — not breaking for consumers
-- Deprecated keys remain exported — no removal yet, just JSDoc `@deprecated`
-- Both `chatLogKey`/`chatIncomingChannel`/`chatOutgoingChannel` stay as-is (backward compat); new service-scoped builders added alongside
+- `ioredis-mock` pub/sub works via EventEmitter sharing between duplicated clients —
+  if the mock doesn't relay publish to subscribers, pub/sub tests will be flaky.
+  Mitigation: use `await new Promise(resolve => setTimeout(resolve, 20))` in pub/sub tests.
+- Subscribe methods leak connections (no cleanup API). Acceptable for the defined interface.
+- CJS test coverage: Vitest only tests ESM; CJS path is verified via the build.

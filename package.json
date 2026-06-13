@@ -1,6 +1,6 @@
 {
   "name": "@gonzih/cc-wire",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Single source of truth for Redis channel names, key patterns, and message shapes across the cc-suite (cc-tg, cc-agent, cc-agent-ui)",
   "type": "module",
   "repository": {
@@ -27,12 +27,25 @@
     "build": "rm -rf dist && npm run build:esm && npm run build:cjs",
     "build:esm": "tsc -p tsconfig.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/fix-cjs.mjs",
-    "test": "node --import tsx/esm --test src/channels.test.ts"
+    "test": "npm run test:channels && npm run test:runtime",
+    "test:channels": "node --import tsx/esm --test src/channels.test.ts",
+    "test:runtime": "vitest run --reporter=verbose"
+  },
+  "peerDependencies": {
+    "ioredis": ">=4 <6"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "22.15.21",
+    "ioredis": "5.11.1",
+    "ioredis-mock": "8.13.1",
     "tsx": "4.22.4",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "vitest": "4.1.8"
   },
   "keywords": [
     "redis",
