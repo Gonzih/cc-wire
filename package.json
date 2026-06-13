@@ -1,6 +1,6 @@
 {
   "name": "@gonzih/cc-wire",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "Single source of truth for Redis channel names, key patterns, and message shapes across the cc-suite (cc-tg, cc-agent, cc-agent-ui)",
   "type": "module",
   "repository": {
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.21",
-    "tsx": "4.19.3",
+    "tsx": "4.22.4",
     "typescript": "5.8.3"
   },
   "keywords": [

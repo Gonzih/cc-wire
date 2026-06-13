@@ -13,6 +13,20 @@
 
 import type { NotificationPayload } from "./types.js";
 
+// ─── Service Ownership Constants ─────────────────────────────────────────────
+
+/**
+ * Root directory (relative to HOME) where cc-discord checks out per-namespace
+ * workspace clones: `~/cc-discord-workspace/{namespace}`.
+ */
+export const CC_DISCORD_WORKSPACE_ROOT = "cc-discord-workspace";
+
+/**
+ * Directory name (relative to HOME) of the money-brain repo used by cc-tg
+ * for its dedicated session: `~/money-brain`.
+ */
+export const CC_TG_WORKSPACE = "money-brain";
+
 // ─── Static Keys ─────────────────────────────────────────────────────────────
 
 /** Redis Stream written by cc-agent on every job status change. */
@@ -21,7 +35,11 @@ export const EVENT_STREAM = "cca:event-stream";
 /** Consumer group name used by the coordinator to read from EVENT_STREAM. */
 export const COORDINATOR_GROUP = "coordinator";
 
-/** SET — canonical registry of meta-agent namespaces. */
+/**
+ * SET — canonical registry of meta-agent namespaces.
+ * @deprecated cc-discord now maintains its own namespace registry.
+ *   This key is no longer written by the cc-suite; kept for migration only.
+ */
 export const META_AGENTS_INDEX = "cca:meta:agents:index";
 
 /** SET — index of saved profile names. */
@@ -158,13 +176,72 @@ export const chatOutgoingChannel = (namespace: string): string =>
 export const metaKey = (namespace: string): string =>
   `cca:meta:${namespace}`;
 
-/** LIST — input queue for a meta-agent (RPUSH by cc-tg, RPOP by cc-agent). */
+/**
+ * LIST — input queue for a meta-agent (RPUSH by cc-tg, RPOP by cc-agent).
+ * @deprecated Use `discordMetaInputKey(ns)` — cc-discord now owns namespace sessions directly.
+ */
 export const metaInputKey = (namespace: string): string =>
   `cca:meta:${namespace}:input`;
 
-/** STRING (JSON) — live meta-agent status (typing, tool, etc.), TTL 7 days. */
+/**
+ * STRING (JSON) — live meta-agent status (typing, tool, etc.), TTL 7 days.
+ * @deprecated Use `discordMetaStatusKey(ns)` — cc-discord now owns namespace sessions directly.
+ */
 export const metaAgentStatusKey = (namespace: string): string =>
   `cca:meta-agent:status:${namespace}`;
+
+// ─── cc-discord Keys (dynamic) ───────────────────────────────────────────────
+//
+// cc-discord owns all namespace-scoped Claude sessions. It reads from the
+// meta input queue, writes status, and publishes/subscribes to chat/notify
+// channels — all under the "cca:discord:" prefix to avoid collisions with
+// the old cc-agent-owned keys.
+
+/** LIST — input queue for a cc-discord-managed namespace session (RPUSH/RPOP). */
+export const discordMetaInputKey = (namespace: string): string =>
+  `cca:discord:meta:${namespace}:input`;
+
+/** STRING (JSON) — live status for a cc-discord-managed namespace session, TTL 7 days. */
+export const discordMetaStatusKey = (namespace: string): string =>
+  `cca:discord:meta:${namespace}:status`;
+
+/** CHANNEL — cc-discord → UI outgoing chat messages (pub/sub). */
+export const discordChatOutgoing = (namespace: string): string =>
+  `cca:discord:chat:outgoing:${namespace}`;
+
+/** LIST — cc-discord chat history (LPUSH capped at 500, LIFO). */
+export const discordChatLog = (namespace: string): string =>
+  `cca:discord:chat:log:${namespace}`;
+
+/** CHANNEL — UI/Discord → cc-discord incoming chat messages (pub/sub). */
+export const discordChatIncoming = (namespace: string): string =>
+  `cca:discord:chat:incoming:${namespace}`;
+
+/**
+ * CHANNEL + LIST — job-completion notifications for a Discord namespace.
+ *
+ * Same dual-purpose pattern as `notifyChannel`/`notifyListKey`: PUBLISH by
+ * coordinator (pub/sub) and RPUSH/RPOP delivery queue; Redis pub/sub and list
+ * namespaces are independent so the dual use is safe.
+ */
+export const discordNotify = (namespace: string): string =>
+  `cca:discord:notify:${namespace}`;
+
+// ─── cc-tg Keys (static) ─────────────────────────────────────────────────────
+//
+// cc-tg owns a single dedicated money-brain session with no namespace scoping.
+
+/** CHANNEL — cc-tg → UI outgoing chat messages (pub/sub). */
+export const tgChatOutgoing = (): string => "cca:tg:chat:outgoing";
+
+/** CHANNEL — UI/Telegram → cc-tg incoming chat messages (pub/sub). */
+export const tgChatIncoming = (): string => "cca:tg:chat:incoming";
+
+/**
+ * CHANNEL + LIST — job-completion notifications for the cc-tg session.
+ * Same dual-purpose pattern (pub/sub + RPOP poll fallback).
+ */
+export const tgNotify = (): string => "cca:tg:notify";
 
 // ─── Learnings Keys (dynamic) ─────────────────────────────────────────────────
 

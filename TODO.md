@@ -1,17 +1,19 @@
-# TODO — cc-suite notification routing fix
+# TODO — cc-wire v0.2.0 service ownership redesign
 
-- [x] Research cc-discord: subscribe pattern, spawning, notification routing
-- [x] Research cc-tg: spawning_namespace injection, notify channels
-- [x] Research cc-agent: coordinator namespace fallback, spawningNamespace flow
-- [x] Write PLAN.md with diagnosis and correct flow
-- [ ] git checkout -b feat/routing-flow-fix
-- [ ] Add `spawning_namespace` to `SpawnParams` in src/types.ts
-- [ ] Add Notification Routing section to README.md (broken flow, correct flow, Redis keys)
-- [ ] npm run build — verify build passes
+- [x] Read all source files and plan
+- [ ] git checkout -b feat/service-ownership-v0.2
+- [ ] src/channels.ts — add service-scoped discord/tg key builders
+- [ ] src/channels.ts — add CC_DISCORD_WORKSPACE_ROOT + CC_TG_WORKSPACE constants
+- [ ] src/channels.ts — deprecate metaInputKey, META_AGENTS_INDEX, metaAgentStatusKey
+- [ ] src/types.ts — add "discord" to ChatMessage.source union
+- [ ] src/types.ts — add service field to ChatMessage
+- [ ] src/types.ts — add namespace field to ChatMessage
+- [ ] src/channels.test.ts — tests for new builders and constants
+- [ ] npm run build — verify passes
 - [ ] npm test — verify all tests pass
-- [ ] git add + git diff --staged — verify changes
-- [ ] git commit
-- [ ] npm version patch && npm publish --access public
-- [ ] gh pr create + gh pr merge --squash --auto
-- [ ] gh issue create on gonzih/cc-agent (Bug A: auto-inject spawning_namespace)
-- [ ] gh issue create on gonzih/cc-discord (Bug B: per-namespace notify subscriptions)
+- [ ] README.md — rewrite for new architecture
+- [ ] git diff --staged — verify changes match intent
+- [ ] git add + commit
+- [ ] npm version minor (→ 0.2.0)
+- [ ] npm publish --access public
+- [ ] git push + gh pr create + gh pr merge --squash --auto
