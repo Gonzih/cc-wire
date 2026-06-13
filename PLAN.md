@@ -1,74 +1,80 @@
-# PLAN — cc-suite notification routing fix (cc-wire side)
+# PLAN — cc-wire v0.2.0 service ownership redesign
 
 ## Task restatement
 
-Research the full message routing flow across cc-suite (cc-discord, cc-tg, cc-agent)
-and fix the broken routing: jobs spawned from a simorgh-mobile-app Discord channel
-complete and notify money-brain (Telegram) instead of routing back to the originating
-Discord channel.
+Redesign cc-wire to reflect a new simplified ownership model:
+- **cc-wire**: owns Redis key definitions and storage contracts (this repo)
+- **cc-discord**: directly owns and manages all namespace Claude sessions (was cc-agent's job)
+- **cc-tg**: has its own dedicated money-brain session, completely isolated
+- **cc-agent**: pure job runner only (`spawn_agent`); meta-agent lifecycle removed from it
+- No state sharing between cc-tg and cc-discord
 
-The cc-wire repo's deliverables are:
-1. Add `spawning_namespace` to `SpawnParams` in types.ts (currently missing)
-2. Document the broken vs correct routing flow in README
-3. Open GitHub issues on cc-discord and cc-agent describing the exact code changes needed
+This is a breaking change → **v0.2.0 minor bump**.
 
-## Diagnosis
+## Approach
 
-### Broken flow
-1. Discord user sends message in `#simorgh-mobile-app` channel
-2. cc-discord calls `routeToMetaAgent("simorgh-mobile-app", ...)` → RPUSH to `cca:meta:simorgh-mobile-app:input`
-3. cc-agent meta-agent picks up the message, decides to spawn a sub-job
-4. Meta-agent calls `spawn_agent` MCP tool WITHOUT `spawning_namespace` — cc-agent's MCP
-   server does NOT auto-inject it (unlike cc-tg which does explicitly)
-5. Coordinator processes job completion: `targetNamespace = spawningNamespace ?? this.namespace`
-   → falls back to `money-brain` (coordinator's own namespace)
-6. Coordinator publishes to `cca:notify:money-brain`
-7. cc-tg (subscribed to `cca:notify:money-brain`) picks it up → sends to Telegram (WRONG)
+Single linear approach: augment `channels.ts` with service-scoped builders, deprecate
+old shared keys, update `ChatMessage` type, add workspace constants, update tests, update README,
+bump version, publish, open PR.
 
-### Root causes (two separate bugs)
+There are no meaningful design alternatives — the task spec is prescriptive about what keys to add
+and what to deprecate.
 
-**Bug A — cc-agent**: The `spawn_agent` MCP handler does not auto-inject
-`spawning_namespace` when called from within a meta-agent context. cc-tg works around
-this by injecting it client-side, but meta-agents running in cc-agent cannot.
+## Files to touch
 
-**Bug B — cc-discord**: The notifier subscribes only to `cca:notify:{CC_AGENT_NAMESPACE}`
-(a single hardcoded env-var namespace). Even if fix A is applied, notifications routed
-to `cca:notify:simorgh-mobile-app` would go unheard by cc-discord because it never
-subscribed to that channel.
+- `src/channels.ts` — add discord/tg service-scoped builders, deprecate old meta keys, add constants
+- `src/types.ts` — add `service` field to ChatMessage, add `"discord"` to ChatMessage.source
+- `src/channels.test.ts` — add tests for new builders
+- `README.md` — rewrite for new architecture, new key table, migration notes
+- `package.json` — bump to 0.2.0
 
-### Correct flow (after both fixes)
-1. Discord user → `#simorgh-mobile-app` → cc-discord
-2. cc-discord → RPUSH to `cca:meta:simorgh-mobile-app:input`
-3. Meta-agent spawns sub-job via `spawn_agent`; cc-agent auto-injects
-   `spawning_namespace: "simorgh-mobile-app"` for the meta-agent context
-4. Coordinator: `targetNamespace = "simorgh-mobile-app"`
-5. Publishes to `cca:notify:simorgh-mobile-app`
-6. cc-discord (subscribed to `cca:notify:simorgh-mobile-app`) delivers to `#simorgh-mobile-app` (CORRECT)
+## Changes detail
 
-## Changes in cc-wire (this repo)
+### `src/channels.ts`
 
-### 1. `src/types.ts` — Add `spawning_namespace` to `SpawnParams`
-The `SpawnParams` interface is the canonical type for job-spawn parameters, but it is
-missing the `spawning_namespace` field that cc-tg injects and cc-agent stores/reads.
-Adding it documents the contract and lets consumers type-check spawn calls.
+**Add service-scoped builders:**
+```
+discordMetaInputKey(ns)   → "cca:discord:meta:{ns}:input"
+discordMetaStatusKey(ns)  → "cca:discord:meta:{ns}:status"
+discordChatOutgoing(ns)   → "cca:discord:chat:outgoing:{ns}"
+discordChatLog(ns)        → "cca:discord:chat:log:{ns}"
+discordChatIncoming(ns)   → "cca:discord:chat:incoming:{ns}"
+discordNotify(ns)         → "cca:discord:notify:{ns}"
+tgChatOutgoing()          → "cca:tg:chat:outgoing"
+tgChatIncoming()          → "cca:tg:chat:incoming"
+tgNotify()                → "cca:tg:notify"
+```
 
-### 2. `README.md` — Document the routing flow
-Add a "Notification Routing" section that:
-- Shows the broken flow (no spawning_namespace → defaults to coordinator ns)
-- Shows the correct flow (spawning_namespace set → routes back to originator)
-- Maps each hop to the exact Redis key/channel from cc-wire
-- Describes what each repo must do
+**Add workspace constants:**
+```
+CC_DISCORD_WORKSPACE_ROOT = "cc-discord-workspace"
+CC_TG_WORKSPACE = "money-brain"
+```
 
-## GitHub issues to open
-- `gonzih/cc-agent`: "fix: auto-inject spawning_namespace for meta-agent-spawned jobs"
-- `gonzih/cc-discord`: "fix: subscribe to cca:notify:{ns} per namespace and route back to Discord channel"
+**Deprecate (keep exported, mark @deprecated):**
+- `metaInputKey(ns)` → `@deprecated use discordMetaInputKey(ns)`
+- `META_AGENTS_INDEX` → `@deprecated cc-discord maintains its own namespace registry`
+- `metaAgentStatusKey(ns)` → `@deprecated use discordMetaStatusKey(ns)`
 
-## Files touched
-- `src/types.ts`
-- `README.md`
-- `package.json` (version bump)
+### `src/types.ts`
 
-## Risks / unknowns
-- `spawning_namespace` in SpawnParams is additive/optional — no breaking change.
-- cc-agent meta-agent context propagation mechanism needs the issue to spell out the
-  expected implementation contract clearly.
+- `ChatMessage.source`: add `"discord"` to union
+- `ChatMessage`: add `service: "cc-discord" | "cc-tg"` field (optional for back-compat with existing data? — keep optional since existing messages won't have it; new messages must set it)
+- `ChatMessage.namespace`: add `namespace: string` (makes source of truth clear for routing)
+
+### `src/channels.test.ts`
+
+- Tests for all new discord/tg builders
+- Tests for workspace constants
+
+### `README.md`
+
+- New architecture overview section with service ownership diagram
+- Full Redis key table with Owner column
+- Migration notes section (old `cca:meta:*` → new `cca:discord:meta:*`)
+
+## Risks
+
+- `ChatMessage.service` is additive but `source` union type change (`"discord"` addition) is also additive — not breaking for consumers
+- Deprecated keys remain exported — no removal yet, just JSDoc `@deprecated`
+- Both `chatLogKey`/`chatIncomingChannel`/`chatOutgoingChannel` stay as-is (backward compat); new service-scoped builders added alongside

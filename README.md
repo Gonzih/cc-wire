@@ -1,6 +1,6 @@
 # @gonzih/cc-wire
 
-Single source of truth for Redis channel names, key patterns, and message shapes across the cc-suite (`cc-agent`, `cc-tg`, `cc-agent-ui`).
+Single source of truth for Redis channel names, key patterns, and message shapes across the cc-suite (`cc-agent`, `cc-discord`, `cc-tg`, `cc-agent-ui`).
 
 No runtime dependencies. No Redis client. Just constants, builders, and types.
 
@@ -10,61 +10,121 @@ No runtime dependencies. No Redis client. Just constants, builders, and types.
 npm install @gonzih/cc-wire
 ```
 
+## Architecture — Service Ownership
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  cc-wire  (this package)                                          │
+│  Owns: Redis key contracts, type definitions                      │
+└─────────────────────────────────┬────────────────────────────────┘
+                                  │ imported by
+          ┌───────────────────────┼───────────────────────┐
+          │                       │                       │
+          ▼                       ▼                       ▼
+┌─────────────────┐   ┌─────────────────────┐  ┌──────────────────┐
+│    cc-discord   │   │       cc-tg         │  │    cc-agent      │
+│                 │   │                     │  │                  │
+│ Owns:           │   │ Owns:               │  │ Owns:            │
+│  per-namespace  │   │  money-brain session│  │  job execution   │
+│  Claude sessions│   │  (single session)   │  │  (spawn_agent)   │
+│  Discord bridge │   │  Telegram bridge    │  │  no meta-agent   │
+│                 │   │                     │  │  lifecycle       │
+│ Workspace:      │   │ Workspace:          │  │                  │
+│  ~/cc-discord-  │   │  ~/money-brain      │  │                  │
+│  workspace/{ns} │   │                     │  │                  │
+└─────────────────┘   └─────────────────────┘  └──────────────────┘
+```
+
+**Key principle:** cc-tg and cc-discord are completely isolated — they share no Redis keys,
+no sessions, and no state. cc-agent is a pure job runner; it no longer manages meta-agent
+lifecycle.
+
 ## Usage
 
 ```typescript
 import {
-  wikiKey,
-  wikiUpdatedKey,
-  notifyChannel,
-  notifyListKey,
-  notifyPublishCommand,
+  // cc-discord service keys
+  discordMetaInputKey,
+  discordMetaStatusKey,
+  discordChatOutgoing,
+  discordChatLog,
+  discordChatIncoming,
+  discordNotify,
+  // cc-tg service keys
+  tgChatOutgoing,
+  tgChatIncoming,
+  tgNotify,
+  // Service ownership constants
+  CC_DISCORD_WORKSPACE_ROOT,
+  CC_TG_WORKSPACE,
+  // Job keys (cc-agent)
   jobKey,
   jobIndexKey,
-  chatLogKey,
+  // Shared utility
+  notifyPublishCommand,
   TTL,
   CAP,
-  type Transport,
-  type NotificationPayload,
+  type ChatMessage,
+  type SpawnParams,
 } from "@gonzih/cc-wire";
 
-// Wiki keys
-const hash = wikiKey("org/repo");         // "cca:wiki:org/repo"
-const ts   = wikiUpdatedKey("org/repo");  // "cca:wiki:org/repo:updated"
+// cc-discord — per-namespace session keys
+const inputQueue   = discordMetaInputKey("simorgh-mobile-app");
+// => "cca:discord:meta:simorgh-mobile-app:input"
+const statusKey    = discordMetaStatusKey("simorgh-mobile-app");
+// => "cca:discord:meta:simorgh-mobile-app:status"
+const notifyChan   = discordNotify("simorgh-mobile-app");
+// => "cca:discord:notify:simorgh-mobile-app"
 
-// Job keys
-const job  = jobKey("abc-123");           // "cca:job:abc-123"
-const idx  = jobIndexKey("myns");         // "cca:jobs:myns"
+// cc-tg — single dedicated money-brain session
+const tgOut  = tgChatOutgoing();   // "cca:tg:chat:outgoing"
+const tgIn   = tgChatIncoming();   // "cca:tg:chat:incoming"
+const tgNtfy = tgNotify();         // "cca:tg:notify"
 
-// Notify
-const chan = notifyChannel("myns");       // "cca:notify:myns"
-const list = notifyListKey("myns");       // "cca:notify:myns" (same key, dual-purpose)
+// Workspace paths
+const discordWs = `${process.env.HOME}/${CC_DISCORD_WORKSPACE_ROOT}/simorgh-mobile-app`;
+const tgWs      = `${process.env.HOME}/${CC_TG_WORKSPACE}`;
 
-// NotificationPayload — routing controls which transports deliver the message
-const payload: NotificationPayload = {
-  text: "Build finished ✓",
-  routing: ["discord"],       // omit or leave empty for all transports
+// ChatMessage — with service field
+const msg: ChatMessage = {
+  id: crypto.randomUUID(),
+  source: "discord",
+  service: "cc-discord",
+  role: "user",
+  content: "deploy the app",
+  namespace: "simorgh-mobile-app",
+  timestamp: new Date().toISOString(),
 };
-
-// notifyPublishCommand — generate a redis-cli shell command
-const cmd = notifyPublishCommand("myns", payload);
-// => "redis-cli PUBLISH 'cca:notify:myns' '{\"text\":\"Build finished ✓\",\"routing\":[\"discord\"]}'"
-
-// Constants
-TTL.JOB_SECONDS   // 604800
-CAP.CHAT_LOG      // 500
 ```
 
 ## Key Reference
 
-### Wiki
+### cc-discord Keys
 
-| Builder | Pattern | Redis type | Description |
-|---|---|---|---|
-| `wikiKey(repoSlug)` | `cca:wiki:{repoSlug}` | HASH | Per-repo wiki pages. Field = page name, value = markdown. |
-| `wikiUpdatedKey(repoSlug)` | `cca:wiki:{repoSlug}:updated` | STRING | ISO timestamp of last wiki update. |
+cc-discord owns all namespace-scoped Claude sessions. All keys live under `cca:discord:`.
 
-### Jobs
+| Builder | Pattern | Redis type | Owner | Description |
+|---|---|---|---|---|
+| `discordMetaInputKey(ns)` | `cca:discord:meta:{ns}:input` | LIST | cc-discord | Input queue for namespace session (RPUSH/RPOP). |
+| `discordMetaStatusKey(ns)` | `cca:discord:meta:{ns}:status` | STRING (JSON) | cc-discord | Live session status (typing, tool, etc.), TTL 7d. |
+| `discordChatOutgoing(ns)` | `cca:discord:chat:outgoing:{ns}` | CHANNEL | cc-discord | Outgoing messages to UI (pub/sub). |
+| `discordChatLog(ns)` | `cca:discord:chat:log:{ns}` | LIST | cc-discord | Chat history, capped at 500, LIFO. |
+| `discordChatIncoming(ns)` | `cca:discord:chat:incoming:{ns}` | CHANNEL | cc-discord | Incoming messages from UI/Discord (pub/sub). |
+| `discordNotify(ns)` | `cca:discord:notify:{ns}` | CHANNEL + LIST | cc-discord | Job-completion notifications (PUBLISH + RPOP poll). |
+
+### cc-tg Keys
+
+cc-tg owns a single dedicated `money-brain` session with no namespace scoping.
+
+| Builder | Pattern | Redis type | Owner | Description |
+|---|---|---|---|---|
+| `tgChatOutgoing()` | `cca:tg:chat:outgoing` | CHANNEL | cc-tg | Outgoing messages to UI (pub/sub). |
+| `tgChatIncoming()` | `cca:tg:chat:incoming` | CHANNEL | cc-tg | Incoming messages from UI/Telegram (pub/sub). |
+| `tgNotify()` | `cca:tg:notify` | CHANNEL + LIST | cc-tg | Job-completion notifications (PUBLISH + RPOP poll). |
+
+### cc-agent Keys (jobs only)
+
+cc-agent is a pure job runner. It no longer manages meta-agent lifecycle.
 
 | Builder | Pattern | Redis type | Description |
 |---|---|---|---|
@@ -76,183 +136,80 @@ CAP.CHAT_LOG      // 500
 | `jobDoneChannel(id)` | `cca:job:done:{id}` | CHANNEL | Job completion pub/sub. |
 | `jobDoneQueueKey(id)` | `cca:job:done:{id}:queue` | LIST | LPUSH/BLPOP queue for `wait_for_job`, TTL 7d. |
 | `jobIndexKey(ns)` | `cca:jobs:{ns}` | SET | Job IDs per namespace. |
+| `EVENT_STREAM` | `cca:event-stream` | STREAM | Job status events (XADD/XREADGROUP). |
+| `COORDINATOR_GROUP` | `coordinator` | — | Consumer group name. |
 
-### Event Stream
+### Shared / Utility Keys
 
-| Constant | Value | Description |
-|---|---|---|
-| `EVENT_STREAM` | `cca:event-stream` | Redis Stream — job status events. |
-| `COORDINATOR_GROUP` | `coordinator` | Consumer group name. |
+| Builder / Constant | Pattern | Redis type | Description |
+|---|---|---|---|
+| `notifyChannel(ns)` | `cca:notify:{ns}` | CHANNEL | Legacy coordinator notify (use service-scoped builders for new code). |
+| `notifyListKey(ns)` | `cca:notify:{ns}` | LIST | Same key — delivery queue. |
+| `notifyLogKey(ns)` | `cca:notify-log:{ns}` | LIST | Notification audit log, capped at 100, LIFO. |
+| `notifyPublishCommand(ns, payload)` | — | — | Returns a `redis-cli PUBLISH` shell command string. Useful for cron prompts. |
+| `planKey(id)` | `cca:plan:{id}` | STRING (JSON) | PlanRecord, TTL 30d. |
+| `coordinatorPlanKey(jobId)` | `cca:coordinator:plan:{jobId}` | STRING | Coordinator plan JSON. |
+| `profileKey(name)` | `cca:profile:{name}` | STRING (JSON) | Saved Profile. |
+| `PROFILES_INDEX` | `cca:profiles:index` | SET | Profile names. |
+| `cronsKey(ns)` | `cca:crons:{ns}` | STRING (JSON array) | Cron definitions. |
+| `deletedCronsKey(ns)` | `cca:deleted-crons:{ns}` | SET | Tombstone IDs, TTL 7d. |
+| `learningsKey(ns)` | `cca:learnings:{ns}` | LIST | Learnings (LPUSH, capped at 50), TTL 90d, LIFO. |
+| `wikiKey(repoSlug)` | `cca:wiki:{repoSlug}` | HASH | Wiki pages. Field = page name, value = markdown. |
+| `wikiUpdatedKey(repoSlug)` | `cca:wiki:{repoSlug}:updated` | STRING | ISO timestamp of last wiki update. |
+| `swarmKey(id)` | `cca:swarm:{id}` | STRING (JSON) | SwarmRecord. |
+| `SWARM_REQUESTS_KEY` | `cca:swarm:requests` | LIST | Swarm task request queue (LPUSH). |
+| `CC_AGENT_VERSION_KEY` | `cca:meta:cc-agent:version` | STRING | Running cc-agent version. |
+| `CC_TG_VERSION_KEY` | `cca:meta:cc-tg:version` | STRING | Running cc-tg version. |
+| `TOKEN_INDEX_KEY` | `cca:token:index` | STRING | Token rotation index. |
+| `VOICE_PENDING_KEY` | `voice:pending` | LIST | Transcription pending queue (cc-tg only). |
+| `VOICE_FAILED_KEY` | `voice:failed` | LIST | Failure log, TTL 48h (cc-tg only). |
 
-### Notify / Chat
+### Service Ownership Constants
 
-| Builder | Pattern | Description |
-|---|---|---|
-| `notifyChannel(ns)` | `cca:notify:{ns}` | CHANNEL — coordinator publishes job completion. |
-| `notifyListKey(ns)` | `cca:notify:{ns}` | LIST — delivery queue (RPUSH/RPOP). Same key as channel (safe — Redis pub/sub and list namespaces are independent). |
-| `notifyLogKey(ns)` | `cca:notify-log:{ns}` | LIST — persistent audit log, capped at `CAP.NOTIFY_LOG` (100). |
-| `notifyPublishCommand(ns, payload)` | — | Returns a `redis-cli PUBLISH` shell command string. Useful for cron prompts. |
-| `chatLogKey(ns)` | `cca:chat:log:{ns}` | LIST — chat history, capped at `CAP.CHAT_LOG` (500), LIFO. |
-| `chatIncomingChannel(ns)` | `cca:chat:incoming:{ns}` | CHANNEL — UI → cc-tg. |
-| `chatOutgoingChannel(ns)` | `cca:chat:outgoing:{ns}` | CHANNEL — cc-tg → UI. |
+```typescript
+CC_DISCORD_WORKSPACE_ROOT  // "cc-discord-workspace"
+// Usage: `${HOME}/${CC_DISCORD_WORKSPACE_ROOT}/{namespace}`
 
-### Meta-Agent
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `metaKey(ns)` | `cca:meta:{ns}` | STRING (JSON) — MetaAgentInfo state, TTL 30d. |
-| `metaInputKey(ns)` | `cca:meta:{ns}:input` | LIST — input queue (RPUSH/RPOP). |
-| `metaAgentStatusKey(ns)` | `cca:meta-agent:status:{ns}` | STRING (JSON) — live status, TTL 7d. |
-| `META_AGENTS_INDEX` | `cca:meta:agents:index` | SET — canonical registry. |
-
-### Wiki
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `wikiKey(repoSlug)` | `cca:wiki:{repoSlug}` | HASH — wiki pages. Field = page name, value = markdown. |
-| `wikiUpdatedKey(repoSlug)` | `cca:wiki:{repoSlug}:updated` | STRING — ISO timestamp of last update. |
-
-### Profiles
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `profileKey(name)` | `cca:profile:{name}` | STRING (JSON) — saved Profile. |
-| `PROFILES_INDEX` | `cca:profiles:index` | SET — profile names. |
-
-### Crons
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `cronsKey(ns)` | `cca:crons:{ns}` | STRING (JSON array) — cron definitions. |
-| `deletedCronsKey(ns)` | `cca:deleted-crons:{ns}` | SET — tombstone IDs, TTL 7d. |
-
-### Learnings
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `learningsKey(ns)` | `cca:learnings:{ns}` | LIST — learnings (LPUSH, capped at `CAP.LEARNINGS` = 50), TTL 90d, LIFO. |
-
-### Plans / Coordinator
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `planKey(id)` | `cca:plan:{id}` | STRING (JSON) — PlanRecord, TTL 30d. |
-| `coordinatorPlanKey(jobId)` | `cca:coordinator:plan:{jobId}` | STRING — coordinator plan JSON. |
-
-### Swarm
-
-| Builder | Pattern | Description |
-|---|---|---|
-| `swarmKey(id)` | `cca:swarm:{id}` | STRING (JSON) — SwarmRecord. |
-| `SWARM_REQUESTS_KEY` | `cca:swarm:requests` | LIST — task request queue (LPUSH). |
-
-### Version / Token
-
-| Constant | Value | Description |
-|---|---|---|
-| `CC_AGENT_VERSION_KEY` | `cca:meta:cc-agent:version` | STRING — running cc-agent version. |
-| `CC_TG_VERSION_KEY` | `cca:meta:cc-tg:version` | STRING — running cc-tg version. |
-| `TOKEN_INDEX_KEY` | `cca:token:index` | STRING — token rotation index. |
-
-### Voice (cc-tg only)
-
-| Constant | Value | Description |
-|---|---|---|
-| `VOICE_PENDING_KEY` | `voice:pending` | LIST — transcription pending queue. |
-| `VOICE_FAILED_KEY` | `voice:failed` | LIST — failure log, TTL 48h. |
+CC_TG_WORKSPACE            // "money-brain"
+// Usage: `${HOME}/${CC_TG_WORKSPACE}`
+```
 
 ## Constants
 
 ```typescript
-TTL.JOB_SECONDS       // 604800   (7 days)
-TTL.PLAN_SECONDS      // 2592000  (30 days)
-TTL.LEARNINGS_SECONDS // 7776000  (90 days)
-TTL.VOICE_FAILED_SECONDS // 172800 (48 hours)
+TTL.JOB_SECONDS            // 604800   (7 days)
+TTL.PLAN_SECONDS           // 2592000  (30 days)
+TTL.LEARNINGS_SECONDS      // 7776000  (90 days)
+TTL.VOICE_FAILED_SECONDS   // 172800   (48 hours)
 
-CAP.NOTIFY_LOG        // 100
-CAP.CHAT_LOG          // 500
-CAP.LEARNINGS         // 50
-CAP.EVENT_STREAM      // 500
+CAP.NOTIFY_LOG             // 100
+CAP.CHAT_LOG               // 500
+CAP.LEARNINGS              // 50
+CAP.EVENT_STREAM           // 500
 
-TIMING.COORDINATOR_POLL_MS     // 2000
-TIMING.DEPENDENCY_TICK_MS      // 3000
-TIMING.INPUT_POLL_INTERVAL_MS  // 3000
-TIMING.META_AGENT_FLUSH_DELAY_MS // 1500
+TIMING.COORDINATOR_POLL_MS         // 2000
+TIMING.DEPENDENCY_TICK_MS          // 3000
+TIMING.INPUT_POLL_INTERVAL_MS      // 3000
+TIMING.META_AGENT_FLUSH_DELAY_MS   // 1500
 ```
 
 ## Notification Routing
 
-Job-completion notifications flow through `cca:notify:{namespace}`. The namespace that
-receives the notification is determined by `spawning_namespace` on the spawn call:
+Each service subscribes to its own notify channel for job-completion notifications:
 
-```
-coordinator: targetNamespace = job.spawningNamespace ?? coordinator.namespace
-```
-
-If `spawning_namespace` is absent the notification falls back to the coordinator's own
-namespace (typically `"money-brain"`), which is the source of the routing bug described
-below.
-
-### Broken flow — Discord jobs notify Telegram instead of Discord
-
-```
-Discord #simorgh-mobile-app
-    → cc-discord routeToMetaAgent("simorgh-mobile-app")
-        → RPUSH cca:meta:simorgh-mobile-app:input
-            → cc-agent meta-agent picks up message
-                → spawn_agent { repoUrl, task }       ← no spawning_namespace
-                    → Coordinator: targetNs = coordinator.namespace = "money-brain"
-                        → PUBLISH cca:notify:money-brain
-                            → cc-tg (subscribed to cca:notify:money-brain) → Telegram ✗
-```
-
-Two bugs combine to produce this:
-
-| Bug | Repo | Description |
+| Service | Notify key builder | Pattern |
 |---|---|---|
-| A | `cc-agent` | `spawn_agent` MCP handler does not auto-inject `spawning_namespace` when called from within a meta-agent context. cc-tg works around this by injecting it client-side; meta-agents cannot. |
-| B | `cc-discord` | The notifier subscribes only to `cca:notify:{CC_AGENT_NAMESPACE}` (one hardcoded namespace). Even after Bug A is fixed, cc-discord would not hear notifications on `cca:notify:simorgh-mobile-app`. |
+| cc-discord | `discordNotify(ns)` | `cca:discord:notify:{ns}` |
+| cc-tg | `tgNotify()` | `cca:tg:notify` |
 
-### Correct flow — after both fixes
+Both use the same dual-purpose pattern: the coordinator PUBLISHes on the channel (pub/sub)
+and also RPUSHes to the same key as a list (poll fallback). Redis pub/sub and list namespaces
+are independent so this is safe.
 
-```
-Discord #simorgh-mobile-app
-    → cc-discord routeToMetaAgent("simorgh-mobile-app")
-        → RPUSH cca:meta:simorgh-mobile-app:input
-            → cc-agent meta-agent picks up message
-                → spawn_agent { repoUrl, task }
-                    ← cc-agent MCP injects spawning_namespace = "simorgh-mobile-app"
-                        → Coordinator: targetNs = "simorgh-mobile-app"
-                            → PUBLISH cca:notify:simorgh-mobile-app
-                                → cc-discord (subscribed to cca:notify:simorgh-mobile-app)
-                                    → Discord #simorgh-mobile-app ✓
-```
+### Setting spawning_namespace on spawn calls
 
-### Redis keys involved
-
-| Step | Key / Channel | Builder |
-|---|---|---|
-| Input to meta-agent | `cca:meta:{ns}:input` | `metaInputKey(ns)` |
-| Job completion pub/sub | `cca:notify:{ns}` | `notifyChannel(ns)` |
-| Job completion list (5 s poll fallback) | `cca:notify:{ns}` | `notifyListKey(ns)` |
-| Notification audit log | `cca:notify-log:{ns}` | `notifyLogKey(ns)` |
-
-### Required fixes per repo
-
-**`gonzih/cc-agent`** (Bug A): When the `spawn_agent` MCP tool is called from within a
-running meta-agent context, the MCP handler should auto-inject
-`spawning_namespace: metaAgentNamespace` if the caller has not already set it. The
-meta-agent's namespace is known to cc-agent at the time of the call.
-
-**`gonzih/cc-discord`** (Bug B): The notifier must subscribe to `cca:notify:{ns}` for
-every namespace registered in `routedChannelIds`, and route incoming notifications to
-the corresponding Discord channel — not just the single default
-`DISCORD_NOTIFY_CHANNEL_ID`.
-
-### Setting spawning_namespace on manual spawn calls
-
-Any caller that spawns jobs and wants notifications routed back to itself must set
-`spawning_namespace` on the `SpawnParams`:
+Any caller spawning jobs via cc-agent must set `spawning_namespace` on `SpawnParams` so
+the coordinator routes completion notifications to the right service:
 
 ```typescript
 import type { SpawnParams } from "@gonzih/cc-wire";
@@ -260,9 +217,26 @@ import type { SpawnParams } from "@gonzih/cc-wire";
 const params: SpawnParams = {
   repoUrl: "https://github.com/org/repo",
   task: "fix the build",
-  spawning_namespace: "simorgh-mobile-app",  // notifications routed here
+  spawning_namespace: "simorgh-mobile-app",  // cc-agent uses this to route the notify
 };
 ```
+
+## Migration from v0.1.x
+
+If you were using the old cc-agent-owned meta-agent keys, replace them:
+
+| Old (deprecated) | New | Owner |
+|---|---|---|
+| `metaInputKey(ns)` → `cca:meta:{ns}:input` | `discordMetaInputKey(ns)` → `cca:discord:meta:{ns}:input` | cc-discord |
+| `metaAgentStatusKey(ns)` → `cca:meta-agent:status:{ns}` | `discordMetaStatusKey(ns)` → `cca:discord:meta:{ns}:status` | cc-discord |
+| `META_AGENTS_INDEX` → `cca:meta:agents:index` | — (cc-discord maintains its own registry) | cc-discord |
+| `chatLogKey(ns)` → `cca:chat:log:{ns}` | `discordChatLog(ns)` → `cca:discord:chat:log:{ns}` | cc-discord |
+| `chatOutgoingChannel(ns)` → `cca:chat:outgoing:{ns}` | `discordChatOutgoing(ns)` → `cca:discord:chat:outgoing:{ns}` | cc-discord |
+| `chatIncomingChannel(ns)` → `cca:chat:incoming:{ns}` | `discordChatIncoming(ns)` → `cca:discord:chat:incoming:{ns}` | cc-discord |
+| `notifyChannel(ns)` (Discord use) | `discordNotify(ns)` | cc-discord |
+| `notifyChannel(ns)` / `notifyListKey(ns)` (tg use) | `tgNotify()` | cc-tg |
+
+The deprecated exports remain in v0.2.x for migration; they will be removed in v0.3.x.
 
 ## Development
 

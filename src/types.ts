@@ -165,16 +165,21 @@ export interface NotificationPayload {
 /**
  * Shape for all messages written to chat channels and the chat log.
  *
- * Ordering note: `cca:chat:log:{ns}` is LIFO (LPUSH). Consumers must reverse
- * the LRANGE result for chronological display.
+ * Ordering note: `cca:discord:chat:log:{ns}` and legacy `cca:chat:log:{ns}`
+ * are LIFO (LPUSH). Consumers must reverse the LRANGE result for chronological
+ * display.
  */
 export interface ChatMessage {
   id: string;                                               // UUID
-  source: "telegram" | "ui" | "claude" | "cc-tg";
+  source: "telegram" | "ui" | "claude" | "cc-tg" | "discord";
+  /** Which bridge service produced or consumed this message. */
+  service?: "cc-discord" | "cc-tg";
   role: "user" | "assistant" | "tool";
   content: string;
+  /** The namespace (Discord channel slug or "money-brain") this message belongs to. */
+  namespace?: string;
   timestamp: string;                                        // ISO 8601
-  chatId: number;                                           // 0 for non-Telegram
+  chatId?: number;                                          // Telegram chat ID; absent for non-Telegram
 }
 
 // ─── Meta-Agent State (cca:meta:{namespace}) ──────────────────────────────────
