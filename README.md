@@ -1,13 +1,15 @@
 # @gonzih/cc-wire
 
-Single source of truth for Redis channel names, key patterns, and message shapes across the cc-suite (`cc-agent`, `cc-discord`, `cc-tg`, `cc-agent-ui`).
+Single source of truth for Redis channel names, key patterns, message shapes, and
+storage runtime across the cc-suite (`cc-agent`, `cc-discord`, `cc-tg`, `cc-agent-ui`).
 
-No runtime dependencies. No Redis client. Just constants, builders, and types.
+v0.3.0+: ships a typed storage runtime — services call `createCcWire(redis)` and
+never touch raw Redis or import key builders directly.
 
 ## Install
 
 ```sh
-npm install @gonzih/cc-wire
+npm install @gonzih/cc-wire ioredis
 ```
 
 ## Architecture — Service Ownership
@@ -39,7 +41,53 @@ npm install @gonzih/cc-wire
 no sessions, and no state. cc-agent is a pure job runner; it no longer manages meta-agent
 lifecycle.
 
-## Usage
+## Runtime — `createCcWire(redis)`
+
+Pass an [ioredis](https://github.com/redis/ioredis) `Redis` instance and get back
+fully-typed storage APIs per service. No raw Redis commands, no key string management.
+
+```typescript
+import { createClient } from "ioredis";
+import { createCcWire } from "@gonzih/cc-wire";
+
+const redis = new Redis(process.env.REDIS_URL);
+const wire = createCcWire(redis);
+
+// cc-discord: per-namespace session management
+await wire.discord.enqueue("simorgh", { id: "...", source: "discord", ... });
+const msg = await wire.discord.dequeue("simorgh");                    // ChatMessage | null
+await wire.discord.publishOutgoing("simorgh", msg);                   // PUBLISH + log + LTRIM
+wire.discord.subscribeOutgoing("simorgh", (msg) => console.log(msg)); // live stream
+await wire.discord.setStatus("simorgh", { isTyping: true, ... });
+const status = await wire.discord.getStatus("simorgh");               // MetaAgentStatus | null
+await wire.discord.writeChatLog("simorgh", msg);
+const history = await wire.discord.getChatLog("simorgh", 50);         // chronological
+await wire.discord.notify("simorgh", { text: "job done" });
+const notif = await wire.discord.pollNotify("simorgh");               // NotificationPayload | null
+await wire.discord.registerChannel("1234567890", "simorgh", repoUrl);
+const chan = await wire.discord.getChannel("1234567890");
+const channels = await wire.discord.listChannels();
+
+// cc-tg: single money-brain session
+await wire.tg.publishOutgoing(msg);
+wire.tg.subscribeOutgoing((msg) => console.log(msg));
+await wire.tg.notify({ text: "job done" });
+const tgNotif = await wire.tg.pollNotify();
+
+// cc-agent: job queue
+await wire.jobs.enqueue({ id: "job-001", repoUrl: "...", task: "..." });
+const job = await wire.jobs.getStatus("job-001");
+await wire.jobs.publishDone("job-001", { status: "done", score: 1.0 });
+
+// shared master token
+await wire.token.setMaster("my-token");
+const token = await wire.token.getMaster();
+
+// raw redis escape hatch (migration only)
+const raw = wire._redis;
+```
+
+## Key builders (v0.2.x compat, use runtime in new code)
 
 ```typescript
 import {
@@ -241,8 +289,10 @@ The deprecated exports remain in v0.2.x for migration; they will be removed in v
 ## Development
 
 ```sh
-npm run build   # compile ESM + CJS
-npm test        # run tests (Node built-in test runner via tsx)
+npm run build          # compile ESM + CJS
+npm test               # run all tests (channels: node --test; runtime: vitest)
+npm run test:channels  # key builder tests only (node --test + tsx)
+npm run test:runtime   # runtime tests only (vitest + ioredis-mock)
 ```
 
 ## License
