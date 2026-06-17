@@ -91,6 +91,10 @@ export const jobSignalKey = (jobId: string): string =>
 export const jobInputKey = (jobId: string): string =>
   `cca:job:${jobId}:input`;
 
+/** STRING — byte offset into the job's log file, used for re-attach after restart. */
+export const jobLogOffsetKey = (jobId: string): string =>
+  `cca:job:${jobId}:log-offset`;
+
 /** CHANNEL — live output lines published as the job runs (pub/sub). */
 export const jobOutputLiveChannel = (jobId: string): string =>
   `cca:job:${jobId}:output:live`;
