@@ -24,6 +24,7 @@ export const CC_DISCORD_WORKSPACE_ROOT = "cc-discord-workspace";
 /**
  * Directory name (relative to HOME) of the money-brain repo used by cc-tg
  * for its dedicated session: `~/money-brain`.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
  */
 export const CC_TG_WORKSPACE = "money-brain";
 
@@ -32,7 +33,10 @@ export const CC_TG_WORKSPACE = "money-brain";
 /** Redis Stream written by cc-agent on every job status change. */
 export const EVENT_STREAM = "cca:event-stream";
 
-/** Consumer group name used by the coordinator to read from EVENT_STREAM. */
+/**
+ * Consumer group name used by the coordinator to read from EVENT_STREAM.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const COORDINATOR_GROUP = "coordinator";
 
 /**
@@ -57,13 +61,22 @@ export const JOB_INDEX_GLOB = "cca:jobs:*";
 /** Key prefix stripped when extracting namespace from a job index key. */
 export const JOB_INDEX_PREFIX = "cca:jobs:";
 
-/** STRING — running cc-tg npm version. */
+/**
+ * STRING — running cc-tg npm version.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const CC_TG_VERSION_KEY = "cca:meta:cc-tg:version";
 
-/** LIST — cc-tg voice transcription pending queue (RPUSH, LRANGE, LREM). */
+/**
+ * LIST — cc-tg voice transcription pending queue (RPUSH, LRANGE, LREM).
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const VOICE_PENDING_KEY = "voice:pending";
 
-/** LIST — cc-tg voice transcription failure log (RPUSH), TTL 48h. */
+/**
+ * LIST — cc-tg voice transcription failure log (RPUSH), TTL 48h.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const VOICE_FAILED_KEY = "voice:failed";
 
 /** LIST — swarm task request queue (LPUSH). */
@@ -109,7 +122,10 @@ export const jobDoneQueueKey = (jobId: string): string =>
 
 // ─── Coordinator Keys (dynamic) ───────────────────────────────────────────────
 
-/** STRING — coordinator plan JSON stored per job. */
+/**
+ * STRING — coordinator plan JSON stored per job.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const coordinatorPlanKey = (jobId: string): string =>
   `cca:coordinator:plan:${jobId}`;
 
@@ -152,6 +168,8 @@ export const notifyLogKey = (namespace: string): string =>
  *
  * Example output:
  *   redis-cli PUBLISH 'cca:notify:myns' '{"text":"hello","routing":["discord"]}'
+ *
+ * @deprecated — coordinator/TG scheme, will be removed in next major
  */
 export const notifyPublishCommand = (
   namespace: string,
@@ -176,7 +194,10 @@ export const chatOutgoingChannel = (namespace: string): string =>
 
 // ─── Meta-Agent Keys (dynamic) ───────────────────────────────────────────────
 
-/** STRING (JSON) — MetaAgentInfo state, TTL 30 days. */
+/**
+ * STRING (JSON) — MetaAgentInfo state, TTL 30 days.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const metaKey = (namespace: string): string =>
   `cca:meta:${namespace}`;
 
@@ -235,15 +256,22 @@ export const discordNotify = (namespace: string): string =>
 //
 // cc-tg owns a single dedicated money-brain session with no namespace scoping.
 
-/** CHANNEL — cc-tg → UI outgoing chat messages (pub/sub). */
+/**
+ * CHANNEL — cc-tg → UI outgoing chat messages (pub/sub).
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const tgChatOutgoing = (): string => "cca:tg:chat:outgoing";
 
-/** CHANNEL — UI/Telegram → cc-tg incoming chat messages (pub/sub). */
+/**
+ * CHANNEL — UI/Telegram → cc-tg incoming chat messages (pub/sub).
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export const tgChatIncoming = (): string => "cca:tg:chat:incoming";
 
 /**
  * CHANNEL + LIST — job-completion notifications for the cc-tg session.
  * Same dual-purpose pattern (pub/sub + RPOP poll fallback).
+ * @deprecated — coordinator/TG scheme, will be removed in next major
  */
 export const tgNotify = (): string => "cca:tg:notify";
 
@@ -282,6 +310,30 @@ export const wikiUpdatedKey = (repoSlug: string) =>
 export const swarmKey = (swarmId: string): string =>
   `cca:swarm:${swarmId}`;
 
+// ─── cc-discord Cron Engine Keys ──────────────────────────────────────────────
+
+/** HASH index — all cron job IDs (HSET/HDEL/HKEYS). */
+export const cronListKey = (): string => "cca:discord:cron:list";
+
+/** HASH — individual cron record fields for a given cron ID. */
+export const cronHashKey = (id: string): string => `cca:discord:cron:${id}`;
+
+// ─── cc-discord Meta-Agent Streaming ──────────────────────────────────────────
+
+/** CHANNEL — live streaming output from the meta-agent for a namespace (pub/sub). */
+export const metaStreamChannel = (ns: string): string => `cca:meta:${ns}:stream`;
+
+/** LIST — persisted meta-agent streaming output log for a namespace (LPUSH capped). */
+export const metaLogKey = (ns: string): string => `cca:meta:${ns}:log`;
+
+// ─── cc-discord Singleton and Dedup ───────────────────────────────────────────
+
+/** STRING — singleton presence key; SET EX to claim the Discord instance lock. */
+export const DISCORD_INSTANCE_KEY = "cca:discord:instance";
+
+/** STRING — dedup sentinel for a sent notification/message in a namespace, TTL 120 s. */
+export const dedupKey = (ns: string): string => `cca:discord:sent:${ns}`;
+
 // ─── TTL Constants ────────────────────────────────────────────────────────────
 
 export const TTL = {
@@ -291,9 +343,18 @@ export const TTL = {
   PLAN_SECONDS: 30 * 24 * 60 * 60,
   /** 90 days in seconds — learnings lists. */
   LEARNINGS_SECONDS: 90 * 24 * 60 * 60,
-  /** 48 hours in seconds — voice:failed list. */
+  /**
+   * 48 hours in seconds — voice:failed list.
+   * @deprecated coordinator/TG scheme, will be removed in next major
+   */
   VOICE_FAILED_SECONDS: 48 * 60 * 60,
 } as const;
+
+/** Milliseconds before the cc-discord singleton instance lock expires and must be renewed. */
+export const DISCORD_INSTANCE_TTL_MS = 30000;
+
+/** Seconds before a sent-message dedup sentinel expires and the same message can be re-sent. */
+export const DEDUP_TTL_SECONDS = 120;
 
 // ─── Cap Constants ────────────────────────────────────────────────────────────
 
@@ -311,7 +372,10 @@ export const CAP = {
 // ─── Timing Constants ─────────────────────────────────────────────────────────
 
 export const TIMING = {
-  /** How often the coordinator polls the event stream for new entries (ms). */
+  /**
+   * How often the coordinator polls the event stream for new entries (ms).
+   * @deprecated coordinator/TG scheme, will be removed in next major
+   */
   COORDINATOR_POLL_MS: 2000,
   /** How often the dependency scheduler checks pending jobs (ms). */
   DEPENDENCY_TICK_MS: 3000,

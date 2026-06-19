@@ -124,7 +124,10 @@ export interface JobEvent {
 
 // ─── Coordinator Plan ─────────────────────────────────────────────────────────
 
-/** Optional follow-up job plan attached to a job event. */
+/**
+ * Optional follow-up job plan attached to a job event.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export interface CoordinatorPlan {
   next_step?: {
     repo_url: string;
@@ -300,6 +303,24 @@ export interface CronJob {
   createdAt: string;            // ISO 8601
 }
 
+// ─── Cron Record (cca:discord:cron:{id}) ────────────────────────────────────
+
+/**
+ * Per-cron HASH record stored at `cca:discord:cron:{id}` by the cc-discord
+ * cron engine. All fields are strings because Redis hash values are strings.
+ */
+export interface CronRecord {
+  id: string;
+  namespace: string;
+  schedule: string;
+  message: string;
+  enabled: string;              // "true"/"false" (Redis hash values are strings)
+  fire_count: string;
+  compact_every: string;
+  created_at: string;
+  last_fired_at: string;
+}
+
 // ─── Swarm Record (cca:swarm:{swarm_id}) ──────────────────────────────────────
 
 /**
@@ -316,6 +337,7 @@ export interface SwarmRecord {
 /**
  * Entry in the `voice:pending` list (RPUSH'd by cc-tg).
  * JSON-encoded string.
+ * @deprecated — coordinator/TG scheme, will be removed in next major
  */
 export interface VoicePendingEntry {
   id: string;

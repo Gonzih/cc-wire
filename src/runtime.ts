@@ -85,6 +85,9 @@ export interface DiscordApi {
   >;
 }
 
+/**
+ * @deprecated — coordinator/TG scheme, will be removed in next major
+ */
 export interface TgApi {
   /** Pipeline: PUBLISH to outgoing channel + LPUSH log + LTRIM. */
   publishOutgoing(msg: ChatMessage): Promise<void>;
