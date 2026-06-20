@@ -318,6 +318,14 @@ export const cronListKey = (): string => "cca:discord:cron:list";
 /** HASH — individual cron record fields for a given cron ID. */
 export const cronHashKey = (id: string): string => `cca:discord:cron:${id}`;
 
+// ─── cc-discord Loop Engine Keys ──────────────────────────────────────────────
+
+/** SET — all loop IDs (SADD/SREM/SMEMBERS). */
+export const loopListKey = (): string => "cca:discord:loop:list";
+
+/** HASH — individual loop record fields for a given loop ID. */
+export const loopHashKey = (id: string): string => `cca:discord:loop:${id}`;
+
 // ─── cc-discord Meta-Agent Streaming ──────────────────────────────────────────
 
 /** CHANNEL — live streaming output from the meta-agent for a namespace (pub/sub). */

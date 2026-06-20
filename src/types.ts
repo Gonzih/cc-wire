@@ -321,6 +321,25 @@ export interface CronRecord {
   last_fired_at: string;
 }
 
+// ─── Loop Record (cca:discord:loop:{id}) ─────────────────────────────────────
+
+/**
+ * Per-loop HASH record stored at `cca:discord:loop:{id}` by the cc-discord
+ * loop engine. Loops fire immediately on creation and on cc-discord startup,
+ * then repeat at a fixed millisecond interval.
+ */
+export interface LoopRecord {
+  id: string;
+  namespace: string;
+  message: string;
+  intervalMs: number;            // milliseconds between fires
+  fireCount: number;
+  compactEvery: number;          // inject /compact every N fires (0 = never)
+  status: "active" | "paused";
+  lastRun: string;               // ISO timestamp
+  createdAt: string;             // ISO timestamp
+}
+
 // ─── Swarm Record (cca:swarm:{swarm_id}) ──────────────────────────────────────
 
 /**

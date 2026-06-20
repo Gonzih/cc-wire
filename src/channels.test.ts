@@ -32,6 +32,10 @@ import {
   CC_TG_WORKSPACE,
   TTL,
   CAP,
+  cronListKey,
+  cronHashKey,
+  loopListKey,
+  loopHashKey,
 } from "./channels.js";
 
 describe("wiki keys", () => {
@@ -168,4 +172,29 @@ describe("TTL and CAP constants are positive integers", () => {
   for (const [k, v] of Object.entries(CAP)) {
     it(`CAP.${k} > 0`, () => assert.ok(v > 0, `${k} should be positive`));
   }
+});
+
+describe("cc-discord cron engine keys", () => {
+  it("cronListKey returns correct static key", () =>
+    assert.equal(cronListKey(), "cca:discord:cron:list"));
+  it("cronHashKey builds correct hash key", () =>
+    assert.equal(cronHashKey("abc-123"), "cca:discord:cron:abc-123"));
+  it("cronListKey and cronHashKey are distinct", () =>
+    assert.notEqual(cronListKey(), cronHashKey("any-id")));
+});
+
+describe("cc-discord loop engine keys", () => {
+  it("loopListKey returns correct static key", () =>
+    assert.equal(loopListKey(), "cca:discord:loop:list"));
+  it("loopHashKey builds correct hash key", () =>
+    assert.equal(loopHashKey("def-456"), "cca:discord:loop:def-456"));
+  it("loopListKey and loopHashKey are distinct", () =>
+    assert.notEqual(loopListKey(), loopHashKey("any-id")));
+  it("loop keys are distinct from cron keys", () => {
+    assert.notEqual(loopListKey(), cronListKey());
+    assert.notEqual(loopHashKey("id"), cronHashKey("id"));
+  });
+  it("loopHashKey is namespace-scoped by id", () => {
+    assert.notEqual(loopHashKey("id-1"), loopHashKey("id-2"));
+  });
 });
